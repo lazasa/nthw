@@ -12,10 +12,6 @@ async function initialize() {
 
 async function main() {
   let logger = await initialize()
-
-  setInterval(() => {
-    logger.critical('This is a critical message')
-  }, 20)
 }
 
 main()
