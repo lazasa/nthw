@@ -1,140 +1,30 @@
-const http = require('node:http')
+const { createServer } = require('node:http')
+const { Router } = require('./lib/router')
 
-const PORT = 5255
-
-const HTTP_METHODS = {
-  GET: 'GET',
-  POST: 'POST',
-  PUT: 'PUT',
-  DELETE: 'DELETE',
-  PATCH: 'PATCH',
-  HEAD: 'HEAD',
-  OPTIONS: 'OPTIONS',
-  CONNECT: 'CONNECT',
-  TRACE: 'TRACE'
-}
-
-class Trie {
-  constructor() {
-    this.root = new TrieNode()
+function run(router, port) {
+  if (!(router instanceof Router)) {
+    throw new Error('Invalid router instance')
   }
 
-  insert(wordToInsert, node = this.root) {
-    let length = wordToInsert.length
-    if (length == 0) return
+  if (typeof port !== 'number' || port <= 0 || port >= 65536) {
+    throw new Error('Invalid port number')
+  }
 
-    const letters = wordToInsert.split('')
+  createServer(function _create(req, res) {
+    const route = router.findRoute(req.url, req.method)
 
-    const foundNode = node.children.get(wordToInsert[0])
-
-    if (foundNode) {
-      this.insert(letters.slice(1).join(''), foundNode)
+    if (route?.handler) {
+      req.params = route.params
+      route.handler(req, res)
     } else {
-      let insertedNode = node.add(letters[0], length == 1)
-      this.insert(letters.slice(1).join(''), insertedNode)
+      res.statusCode = 404
+      res.end('Not Found')
     }
-  }
+  }).listen(port, () => {
+    console.log(`Server running at http://localhost:${port}/`)
+    console.log(`Available routes:
+      ${[...router.root.children.keys()].join('\n')}    `)
+  })
 }
 
-class TrieNode {
-  constructor() {
-    this.isEndOfWord = false
-    this.children = new Map()
-  }
-
-  add(letter, _isLastCharacter) {
-    let newNode = new TrieNode()
-    this.children.set(letter, newNode)
-
-    if (_isLastCharacter) newNode.isEndOfWord = true
-    return newNode
-  }
-}
-
-class Router {
-  constructor() {
-    this.routes = new Map()
-  }
-
-  #addRoute(method, path, handler) {
-    if (typeof path !== 'string' || typeof handler !== 'function') {
-      throw new Error(
-        'Invalid argument types: path must be a string and handler must be a function'
-      )
-    }
-
-    this.routes.set(`${method} ${path}`, handler)
-  }
-
-  printRoutes() {
-    console.log('Registered routes: %o', this.routes)
-  }
-
-  handleRequest(req, res) {
-    const { url, method } = req
-    const handler = this.routes.get(`${method} ${url}`)
-
-    if (!handler) {
-      return console.log('404 not found')
-    }
-
-    handler(req, res)
-  }
-
-  get(path, handler) {
-    this.#addRoute(HTTP_METHODS.GET, path, handler)
-  }
-
-  post(path, handler) {
-    this.#addRoute(HTTP_METHODS.POST, path, handler)
-  }
-
-  put(path, handler) {
-    this.#addRoute(HTTP_METHODS.PUT, path, handler)
-  }
-
-  delete(path, handler) {
-    this.#addRoute(HTTP_METHODS.DELETE, path, handler)
-  }
-
-  patch(path, handler) {
-    this.#addRoute(HTTP_METHODS.PATCH, path, handler)
-  }
-
-  head(path, handler) {
-    this.#addRoute(HTTP_METHODS.HEAD, path, handler)
-  }
-
-  options(path, handler) {
-    this.#addRoute(HTTP_METHODS.OPTIONS, path, handler)
-  }
-
-  connect(path, handler) {
-    this.#addRoute(HTTP_METHODS.CONNECT, path, handler)
-  }
-
-  trace(path, handler) {
-    this.#addRoute(HTTP_METHODS.TRACE, path, handler)
-  }
-}
-
-const baseHeader = {
-  'Content-Type': 'application/json; charset=utf-8',
-  Connection: 'close'
-}
-
-const router = new Router()
-
-router.get('/', function handleBaseGet(req, res) {
-  res.writeHead(200, baseHeader)
-  res.end(JSON.stringify({ message: 'Hello, World!' }))
-})
-
-router.get('/about', function handleAboutGet(req, res) {
-  res.writeHead(200, baseHeader)
-  res.end(JSON.stringify({ message: 'About Page' }))
-})
-
-const server = http
-  .createServer((req, res) => router.handleRequest(req, res))
-  .listen(PORT)
+module.exports = { Router, run }
